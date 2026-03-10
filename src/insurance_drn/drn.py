@@ -503,8 +503,13 @@ class DRN:
         np.ndarray
             Shape (n,) for scalar quantiles, (n, len(quantiles)) for array.
         """
+        scalar = np.isscalar(quantiles)
+        q_arr = np.atleast_1d(np.asarray(quantiles, dtype=np.float64))
         dist = self.predict_distribution(X, exposure)
-        return dist.quantile(np.asarray(quantiles, dtype=np.float64))
+        result = dist.quantile(q_arr)
+        if scalar:
+            return result[:, 0]
+        return result
 
     def predict_var(
         self,
@@ -680,7 +685,7 @@ class DRN:
         -------
         DRN
         """
-        state = torch.load(path, map_location="cpu")
+        state = torch.load(path, map_location="cpu", weights_only=False)
         config = state["network_config"]
         hp = state["hyperparams"]
 

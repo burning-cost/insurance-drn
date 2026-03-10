@@ -36,7 +36,7 @@ def fitted_drn():
     })
     y = rng.gamma(2.0, 1000.0, size=n)
     baseline = GammaMockBaseline()
-    drn = DRN(baseline, max_epochs=2, random_state=0, verbose=False)
+    drn = DRN(baseline, max_epochs=2, random_state=0)
     drn.fit(X, y, verbose=False)
     return drn, X, y
 

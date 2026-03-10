@@ -93,46 +93,46 @@ class TestDRNFit:
 
     def test_fit_returns_self(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, patience=5, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2, patience=5)
         result = drn.fit(X, y, verbose=False)
         assert result is drn
 
     def test_fit_sets_is_fitted(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
         assert drn._is_fitted
 
     def test_fit_creates_cutpoints(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
         assert drn._cutpoints is not None
         assert len(drn._cutpoints) >= 3
 
     def test_fit_creates_network(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
         assert drn._network is not None
 
     def test_training_history_populated(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=3, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=3)
         drn.fit(X, y, verbose=False)
         assert len(drn.training_history["train_loss"]) >= 1
         assert len(drn.training_history["val_loss"]) >= 1
 
     def test_fit_with_numpy_X(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X.values, y, verbose=False)
         assert drn._is_fitted
 
     def test_fit_with_exposure(self, mock_baseline, tiny_data):
         X, y = tiny_data
         exposure = np.random.default_rng(0).uniform(0.5, 2.0, size=len(y))
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, exposure=exposure, verbose=False)
         assert drn._is_fitted
 
@@ -140,7 +140,7 @@ class TestDRNFit:
         X, y = tiny_data
         n = len(y)
         split = int(n * 0.8)
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(
             X.iloc[:split], y[:split],
             X_val=X.iloc[split:], y_val=y[split:],
@@ -150,9 +150,9 @@ class TestDRNFit:
 
     def test_reproducible_with_random_state(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn1 = DRN(mock_baseline, max_epochs=3, random_state=0, verbose=False)
+        drn1 = DRN(mock_baseline, max_epochs=3, random_state=0)
         drn1.fit(X, y, verbose=False)
-        drn2 = DRN(mock_baseline, max_epochs=3, random_state=0, verbose=False)
+        drn2 = DRN(mock_baseline, max_epochs=3, random_state=0)
         drn2.fit(X, y, verbose=False)
         # Same random state should give same training history
         h1 = drn1.training_history["train_loss"]
@@ -161,14 +161,14 @@ class TestDRNFit:
 
     def test_n_bins_property(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
         assert drn.n_bins is not None
         assert drn.n_bins >= 2
 
     def test_repr_fitted(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
         r = repr(drn)
         assert "fitted" in r
@@ -179,7 +179,7 @@ class TestDRNPredict:
     @pytest.fixture(autouse=True)
     def fitted_drn(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        self.drn = DRN(mock_baseline, max_epochs=3, random_state=42, verbose=False)
+        self.drn = DRN(mock_baseline, max_epochs=3, random_state=42)
         self.drn.fit(X, y, verbose=False)
         self.X = X
         self.y = y
@@ -249,7 +249,7 @@ class TestDRNAdjustmentFactors:
     @pytest.fixture(autouse=True)
     def fitted_drn(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        self.drn = DRN(mock_baseline, max_epochs=2, random_state=0, verbose=False)
+        self.drn = DRN(mock_baseline, max_epochs=2, random_state=0)
         self.drn.fit(X, y, verbose=False)
         self.X = X
         self.y = y
@@ -276,17 +276,22 @@ class TestDRNAdjustmentFactors:
         row_sums = dist.bin_probs.sum(axis=1)
         np.testing.assert_allclose(row_sums, 1.0, atol=1e-5)
 
-    def test_adjustment_factors_positive(self):
-        """Adjustment factors a_k = p_k/b_k should be positive."""
+    def test_adjustment_factors_non_negative(self):
+        """Adjustment factors a_k = p_k/b_k should be non-negative.
+        
+        With softmax output, DRN probs are always > 0 in theory but may
+        be numerically zero in float32 for extreme bins. The ratio must
+        be >= 0.
+        """
         af = self.drn.adjustment_factors(self.X.head(20))
-        assert af.to_numpy().min() > 0
+        assert af.to_numpy().min() >= 0
 
 
 class TestDRNSaveLoad:
 
     def test_save_load_roundtrip(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, random_state=0, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2, random_state=0)
         drn.fit(X, y, verbose=False)
 
         mean_before = drn.predict_mean(X.head(10))
@@ -304,7 +309,7 @@ class TestDRNSaveLoad:
 
     def test_save_load_fitted_flag(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
 
         with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
@@ -324,7 +329,7 @@ class TestDRNSaveLoad:
 
     def test_save_load_cutpoints_preserved(self, mock_baseline, tiny_data):
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2)
         drn.fit(X, y, verbose=False)
 
         with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
@@ -353,7 +358,6 @@ class TestDRNBaseline:
             max_epochs=1,
             baseline_start=True,
             random_state=0,
-            verbose=False,
         )
         drn.fit(X, y, verbose=False)
 
@@ -372,7 +376,7 @@ class TestDRNBaseline:
     def test_nll_loss_option(self, mock_baseline, tiny_data):
         """DRN should train with loss='nll' without errors."""
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, loss="nll", verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2, loss="nll")
         drn.fit(X, y, verbose=False)
         assert drn._is_fitted
 
@@ -384,7 +388,6 @@ class TestDRNBaseline:
             max_epochs=2,
             kl_alpha=1e-4,
             mean_alpha=1e-4,
-            verbose=False,
         )
         drn.fit(X, y, verbose=False)
         assert drn._is_fitted
@@ -392,7 +395,7 @@ class TestDRNBaseline:
     def test_scr_aware_cutpoints(self, mock_baseline, tiny_data):
         """scr_aware=True should set c_K above 99.7th percentile."""
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, scr_aware=True, verbose=False)
+        drn = DRN(mock_baseline, max_epochs=2, scr_aware=True)
         drn.fit(X, y, verbose=False)
         p997 = np.percentile(y, 99.7)
         assert drn._cutpoints[-1] >= p997

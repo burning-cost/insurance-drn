@@ -449,6 +449,8 @@ class ExtendedHistogramBatch:
 
         crps_vals = np.zeros(self.n, dtype=np.float64)
 
+        # CRPS formula: integral (F(y) - 1(y >= y_true))^2 dy
+        # where 1(y >= y_true) is 1 when integration variable y >= y_true.
         # Contribution from each bin [c_k, c_{k+1}]
         for k in range(self.K):
             c_lo = self.cutpoints[k]
@@ -460,24 +462,18 @@ class ExtendedHistogramBatch:
             F_lo = cdf_at_cuts[:, k]     # (n,)
             F_hi = cdf_at_cuts[:, k + 1] # (n,)
 
-            # Within this bin, CDF is linear from F_lo to F_hi
-            # H = 1(y_true >= y) indicator
-            # We integrate (F(y) - H)^2 over [c_lo, c_hi] in four sub-cases
-
-            # Case A: y_true < c_lo (indicator = 0 for entire bin)
+            # Case A: y_true < c_lo → all bin y satisfy y >= y_true → indicator=1
+            # Integrand = (F - 1)^2
             mask_a = y_true < c_lo
-            # integral of F(y)^2 over linear segment
-            # F(y) = F_lo + (F_hi - F_lo) * (y - c_lo) / w
-            # integral = w * (F_lo^2 + F_lo*F_hi + F_hi^2) / 3
-            contrib_a = w * (F_lo ** 2 + F_lo * F_hi + F_hi ** 2) / 3.0
-            crps_vals += np.where(mask_a, contrib_a, 0.0)
-
-            # Case B: y_true >= c_hi (indicator = 1 for entire bin)
-            mask_b = y_true >= c_hi
-            # integral of (F(y) - 1)^2 = integral of (F_lo + slope*(y-c_lo) - 1)^2
             G_lo = F_lo - 1.0
             G_hi = F_hi - 1.0
-            contrib_b = w * (G_lo ** 2 + G_lo * G_hi + G_hi ** 2) / 3.0
+            contrib_a = w * (G_lo ** 2 + G_lo * G_hi + G_hi ** 2) / 3.0
+            crps_vals += np.where(mask_a, contrib_a, 0.0)
+
+            # Case B: y_true >= c_hi → all bin y satisfy y < y_true → indicator=0
+            # Integrand = F^2
+            mask_b = y_true >= c_hi
+            contrib_b = w * (F_lo ** 2 + F_lo * F_hi + F_hi ** 2) / 3.0
             crps_vals += np.where(mask_b, contrib_b, 0.0)
 
             # Case C: y_true in [c_lo, c_hi) — split at y_true
@@ -491,15 +487,15 @@ class ExtendedHistogramBatch:
                 # F at y_true
                 F_yt = F_lo_c + slope * (yt_c - c_lo)
 
-                # Left sub-interval [c_lo, y_true]: indicator = 1, integrand = (F-1)^2
+                # Left sub-interval [c_lo, y_true]: y < y_true → indicator=0 → F^2
                 w1 = yt_c - c_lo
-                G1_lo = F_lo_c - 1.0
-                G1_hi = F_yt - 1.0
-                i1 = w1 * (G1_lo ** 2 + G1_lo * G1_hi + G1_hi ** 2) / 3.0
+                i1 = w1 * (F_lo_c ** 2 + F_lo_c * F_yt + F_yt ** 2) / 3.0
 
-                # Right sub-interval [y_true, c_hi]: indicator = 0, integrand = F^2
+                # Right sub-interval [y_true, c_hi]: y >= y_true → indicator=1 → (F-1)^2
                 w2 = c_hi - yt_c
-                i2 = w2 * (F_yt ** 2 + F_yt * F_hi_c + F_hi_c ** 2) / 3.0
+                G2_lo = F_yt - 1.0
+                G2_hi = F_hi_c - 1.0
+                i2 = w2 * (G2_lo ** 2 + G2_lo * G2_hi + G2_hi ** 2) / 3.0
 
                 crps_vals[mask_c] += i1 + i2
 
@@ -541,7 +537,8 @@ class ExtendedHistogramBatch:
 
         y_grid = np.linspace(self.c_K, y_upper, n_points)   # (n_points,)
         cdf_grid = self.cdf(y_grid)                           # (n, n_points)
-        indicator = (y_true[:, np.newaxis] >= y_grid[np.newaxis, :]).astype(float)  # (n, n_pts)
+        # indicator = 1 when integration variable y_grid >= y_true
+        indicator = (y_grid[np.newaxis, :] >= y_true[:, np.newaxis]).astype(float)  # (n, n_pts)
 
         integrand = (cdf_grid - indicator) ** 2              # (n, n_points)
         dy = np.diff(y_grid)
@@ -610,14 +607,11 @@ class ExtendedHistogramBatch:
                 (np.log(threshold) - mu_log - sigma_log ** 2) / sigma_log
             )
         else:
-            # Numerical fallback
-            results = np.array([
-                float(np.trapz(
-                    y_grid := np.linspace(1e-6, threshold, 100),
-                    self._baseline_cdf(y_grid)[i, :] * 0 + y_grid,  # placeholder
-                ))
-                for i in range(self.n)
-            ])
+            # Numerical fallback: E[Y * 1(Y < t)] = integral_0^t y * pdf(y) dy
+            y_grid = np.linspace(1e-8, threshold, 100)
+            pdf_grid = self._baseline_pdf(y_grid)  # (n, 100)
+            integrand = y_grid[np.newaxis, :] * pdf_grid  # (n, 100)
+            results = np.trapz(integrand, y_grid, axis=1)
         return results
 
     def _baseline_partial_mean_upper(self, threshold: float) -> np.ndarray:
