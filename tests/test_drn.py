@@ -393,9 +393,22 @@ class TestDRNBaseline:
         assert drn._is_fitted
 
     def test_scr_aware_cutpoints(self, mock_baseline, tiny_data):
-        """scr_aware=True should set c_K above 99.7th percentile."""
+        """scr_aware=True should set c_K above the default (1.05 * max(y)).
+
+        The DRN splits y into train/val before computing cutpoints, so we
+        cannot predict the exact percentile of the training split. We instead
+        verify that scr_aware=True produces a higher upper cutpoint than
+        scr_aware=False, which always uses 1.05 * max(y_train).
+        """
         X, y = tiny_data
-        drn = DRN(mock_baseline, max_epochs=2, scr_aware=True)
-        drn.fit(X, y, verbose=False)
-        p997 = np.percentile(y, 99.7)
-        assert drn._cutpoints[-1] >= p997
+        drn_scr = DRN(mock_baseline, max_epochs=2, scr_aware=True, random_state=0)
+        drn_default = DRN(mock_baseline, max_epochs=2, scr_aware=False, random_state=0)
+        drn_scr.fit(X, y, verbose=False)
+        drn_default.fit(X, y, verbose=False)
+        # SCR-aware upper cutpoint must exceed the default upper cutpoint.
+        # Both use the same train/val split (fixed random_state), so the
+        # comparison is apples-to-apples on the same training data.
+        assert drn_scr._cutpoints[-1] > drn_default._cutpoints[-1], (
+            f"scr_aware cutpoint {drn_scr._cutpoints[-1]:.1f} should exceed "
+            f"default cutpoint {drn_default._cutpoints[-1]:.1f}"
+        )
