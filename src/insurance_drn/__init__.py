@@ -37,7 +37,12 @@ from insurance_drn.network import DRNNetwork
 from insurance_drn.drn import DRN
 from insurance_drn.diagnostics import DRNDiagnostics
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("insurance-drn")
+except PackageNotFoundError:
+    __version__ = "0.0.0"  # not installed
 __all__ = [
     "BaselineDistribution",
     "GLMBaseline",
