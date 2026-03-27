@@ -1,3 +1,5 @@
+⚠️ **This package has been merged into [`insurance-severity`](https://github.com/burning-cost/insurance-severity).** This repository is archived. Install `insurance-severity` instead.
+
 # insurance-drn
 
 **Distributional Refinement Network for insurance pricing.**
